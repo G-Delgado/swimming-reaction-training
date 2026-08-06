@@ -7,32 +7,24 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # Builds inside Kivy's official, version-pinned Buildozer Docker image
+      # instead of raw apt/pip on the runner. This avoids Python/pip/NDK
+      # version drift on the bare runner image, which is what broke the
+      # previous approach (venv created with a Python version whose bundled
+      # pip didn't match what python-for-android expected).
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
         with:
-          python-version: '3.11'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev build-essential
-
-      - name: Install buildozer & cython
-        run: |
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.36
-
-      - name: Build APK with Buildozer
-        run: |
-          yes | buildozer android debug
+          command: buildozer android debug
+          buildozer_version: stable
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: swim-start-trainer-apk
-          path: bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}

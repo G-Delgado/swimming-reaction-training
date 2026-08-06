@@ -1,8 +1,14 @@
 # Entrenador de Salidas — Swim Start Reaction Trainer
 
-Android app (Kivy/Python) for drilling swim race-start reflexes in Spanish.
-The pauses between commands are re-randomised on every run, so the rhythm
-can't be memorised.
+Trainer for drilling swim race-start reflexes in Spanish. The pauses between
+commands are re-randomised on every run, so the rhythm can't be memorised.
+
+Two builds, same features:
+
+| | |
+| --- | --- |
+| **Android app** | Kivy/Python, packaged as an `.apk` — see [Building the APK](#building-the-apk) |
+| **Web app / PWA** | Runs on any phone including iPhone, installs to the home screen, works offline — see [`docs/`](docs/README.md) |
 
 ## Sequence
 
@@ -92,12 +98,24 @@ buildozer android debug     # APK lands in bin/
 `buildozer.spec` pins python-for-android to `v2024.01.21` — its current master
 hardcodes on-device Python 3.14, whose bootstrap is broken upstream.
 
+## Web version
+
+`docs/` holds a full-parity web build, published with GitHub Pages
+(Settings → Pages → Deploy from a branch → `main` / `/docs`). It installs to
+the home screen as a PWA and works offline, which is the only way to run this
+on an iPhone. Details and iOS caveats: [`docs/README.md`](docs/README.md).
+
+Publishing from a branch doesn't use Actions, so the web version deploys even
+when Actions is down.
+
 ## Files
 
 ```
-main.py            app: modes, sequence engine, screens
+main.py            Android app: modes, sequence engine, screens
 theme.py           custom Kivy widgets (water background, cards, sliders)
 config.py          settings + history persistence, grading
 assets/            audio cues (.ogg)
 buildozer.spec     Android packaging config
+build-local.sh     build the APK locally (WSL2/Linux), no CI needed
+docs/              web / PWA version, served by GitHub Pages
 ```

@@ -7,24 +7,52 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      # Builds inside Kivy's official, version-pinned Buildozer Docker image
-      # instead of raw apt/pip on the runner. This avoids Python/pip/NDK
-      # version drift on the bare runner image, which is what broke the
-      # previous approach (venv created with a Python version whose bundled
-      # pip didn't match what python-for-android expected).
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          command: buildozer android debug
-          buildozer_version: stable
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # python-for-android internally spawns "python -m venv" while
+      # installing pure-Python pip dependencies. If a bare "python" on PATH
+      # resolves to a different interpreter than the one above, the venv's
+      # bundled pip can end up mismatched with itself and crash on import.
+      # Pin "python"/"python3" system-wide to the pinned 3.11 interpreter so
+      # every nested subprocess gets the same, known-good version.
+      - name: Pin python to 3.11 system-wide
+        run: |
+          PYBIN="$(command -v python3.11)"
+          sudo ln -sf "$PYBIN" /usr/local/bin/python
+          sudo ln -sf "$PYBIN" /usr/local/bin/python3
+          python --version
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
+            libffi-dev libssl-dev build-essential
+
+      - name: Install buildozer & cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36
+
+      - name: Build APK with Buildozer
+        run: |
+          yes | buildozer android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: swim-start-trainer-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk

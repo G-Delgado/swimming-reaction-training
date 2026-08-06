@@ -1,81 +1,103 @@
-# Swim Start Reaction Trainer
+# Entrenador de Salidas — Swim Start Reaction Trainer
 
-A minimal Android reaction trainer for swimmers. Press Start and it plays a
-randomized start sequence — English or Spanish, toggle at the top:
+Android app (Kivy/Python) for drilling swim race-start reflexes in Spanish.
+The pauses between commands are re-randomised on every run, so the rhythm
+can't be memorised.
 
-- **English:** "Swimmers, take your marks" → *(random 1–8s)* → "Ready" → *(random 1–8s)* → "Set" → *(random 1–8s)* → start buzzer
-- **Español:** "Nadadores, en sus marcas" → *(random 1–8s)* → "Listos" → *(random 1–8s)* → pitido de salida
+## Sequence
 
-The gaps between cues are re-randomized every run (uniform between 1 and 8
-seconds) so the rhythm can't be memorized. The voice cues are generated with
-open-source text-to-speech (not real broadcast recordings, which are
-copyrighted); the start signal is a synthesized electronic buzzer, matching
-how real meets trigger starts.
+```
+"Nadadores, a órdenes del árbitro"
+      ↓  pausa aleatoria
+silbato · silbato · silbatooooo        (el tercero, largo)
+      ↓  pausa aleatoria
+"En sus marcas"
+      ↓  pausa aleatoria  ← la más importante
+SEÑAL DE SALIDA                        (bocina dura)
+```
 
-## Why this isn't already a .apk
+## Modes
 
-This project was built in a sandboxed, offline-by-default environment. It
-has no access to Google's Android SDK servers (`dl.google.com`) or the
-Gradle distribution servers, and no root access to install a JDK/dexer —
-all of which are required to compile an Android app. I verified this
-directly (network calls to those hosts return `403 blocked-by-allowlist`,
-`javac` isn't present, and there's no dexer available even via apt without
-root). So I couldn't compile the final `.apk` from inside this session.
+| Mode | What it does |
+| --- | --- |
+| **Auto** | Plays the whole sequence hands-free with randomised gaps. |
+| **Manual** | You fire each command yourself, one button per step — for standing on deck and starting another swimmer at your own pace. |
+| **Reacción** | Runs the sequence, then measures how fast you tap the screen after the start signal. Logs the time with a grade. |
 
-Everything else is done: the app logic, the audio assets, and a ready-to-run
-build pipeline. Getting the actual `.apk` file takes about 2 minutes, no
-coding required, via either path below.
+In Reacción mode, tapping *before* the signal is caught as **SALIDA EN FALSO**
+(false start) and is not recorded.
 
-## Option A — GitHub Actions (recommended, no local setup)
+### Grades
 
-1. Create a new **public or private** repository on github.com (empty, no
-   README).
-2. Upload this entire `SwimStartTrainer` folder to it — either:
-   - drag-and-drop all files (including the hidden `.github` folder — make
-     sure your file manager shows hidden files) into GitHub's "Add file →
-     Upload files" web UI, or
-   - if you have `git` installed: `cd SwimStartTrainer && git init && git add . && git commit -m "init" && git remote add origin <your-repo-url> && git push -u origin main`
-3. GitHub will automatically start a build (see the **Actions** tab). It
-   takes ~10-15 minutes the first time.
-4. When it finishes, open the workflow run → **Artifacts** → download
-   `swim-start-trainer-apk`. That zip contains the installable `.apk`.
-5. Transfer the `.apk` to your phone (email, Drive, cable) and open it.
-   You'll need to allow "install from unknown sources" the first time.
+Tuned for a screen tap (pure reaction). Feet actually leaving the block is
+roughly 250 ms slower than these numbers.
 
-This uses the workflow file already included at
-`.github/workflows/build.yml` — you don't need to write anything.
+| Time | Grade |
+| --- | --- |
+| < 180 ms | RELÁMPAGO |
+| < 230 ms | EXCELENTE |
+| < 300 ms | MUY BUENO |
+| < 380 ms | BUENO |
+| < 480 ms | PROMEDIO |
+| ≥ 480 ms | LENTO |
 
-## Option B — Build it yourself locally
+The **Tiempos** tab keeps best / average / attempt count plus a full history,
+flagging your record.
 
-Requires a Linux or macOS machine (or WSL on Windows) with Python 3.10+,
-a JDK, and ~10GB free disk space (Buildozer downloads the Android SDK/NDK
-on first run).
+## Settings
+
+Every pause has its own independent min–max window (**Ajustes** tab). Defaults:
+
+| Gap | Default |
+| --- | --- |
+| Before the sequence starts | 1 – 2.5 s |
+| After "a órdenes del árbitro" | 1 – 3 s |
+| After the three whistles | 1 – 3 s |
+| After "En sus marcas" | **1 – 8 s** |
+
+So you can keep the early commands tight and make only the final window wildly
+unpredictable, which is where the training value is. Voice, whistle, and start
+signal each have their own volume.
+
+## Audio
+
+Voices are synthesised offline with eSpeak NG driving MBROLA `es2` diphone
+voices — noticeably more natural than plain formant synthesis. The whistles are
+modelled as a trilling pea-whistle (fundamental + harmonics + breath noise) and
+the start signal is a hard, harmonically-stacked electronic horn with a very
+fast attack, matching how real meets trigger starts.
+
+To swap in your own recordings, drop replacements into `assets/` keeping the
+same filenames:
+
+```
+v_arbitro.ogg      "Nadadores, a órdenes del árbitro"
+v_marcas.ogg       "En sus marcas"
+referee_beeps.ogg  the three whistles as one clip
+start_beep.ogg     the start signal
+```
+
+## Building the APK
+
+Pushing to `main` triggers the GitHub Actions workflow in
+`.github/workflows/build.yml`; download the APK from the run's **Artifacts**.
+
+Locally (Linux/macOS/WSL, needs a JDK and ~10 GB free):
 
 ```bash
 pip install buildozer cython
-cd SwimStartTrainer
-buildozer android debug
+buildozer android debug     # APK lands in bin/
 ```
 
-The `.apk` will appear in `bin/`. First build downloads several GB of
-Android tooling, so expect 20-40 minutes and a good connection.
+`buildozer.spec` pins python-for-android to `v2024.01.21` — its current master
+hardcodes on-device Python 3.14, whose bootstrap is broken upstream.
 
-## Project structure
+## Files
 
 ```
-SwimStartTrainer/
-├── main.py              # App logic (Kivy)
-├── buildozer.spec        # Android packaging config
-├── assets/                # Audio cues (.ogg)
-│   ├── en_marks.ogg / en_ready.ogg / en_set.ogg
-│   ├── es_marcas.ogg / es_listos.ogg
-│   └── start_buzzer.ogg
-└── .github/workflows/build.yml   # Cloud build (Option A)
+main.py            app: modes, sequence engine, screens
+theme.py           custom Kivy widgets (water background, cards, sliders)
+config.py          settings + history persistence, grading
+assets/            audio cues (.ogg)
+buildozer.spec     Android packaging config
 ```
-
-## Tweaking
-
-- Change the random gap range: edit `MIN_GAP` / `MAX_GAP` at the top of
-  `main.py`.
-- Swap in your own audio: drop replacement `.ogg` files into `assets/`
-  with the same filenames.

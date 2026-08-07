@@ -84,16 +84,15 @@ a hand and confirm it's actually seeing the lane before you trust a time.
 
 ## How the audio works
 
-The two spoken lines are audio files (`.ogg` with an `.m4a` fallback, because
-Safari's Ogg Vorbis support is unreliable) and are downloaded at page load, so
-the very first run has sound. The five referee beeps — four fast ones then a
-longer, clearer fifth — and the start horn are **synthesised live** with the
-Web Audio API rather than played from files.
+All four cues are **real recordings** (`.ogg` with an `.m4a` fallback, since
+Safari's Ogg Vorbis support is unreliable). They're downloaded at page load and
+decoded up front, so the very first run has sound.
 
-That's deliberate: for reaction timing we need to know exactly when the horn
-begins. Scheduling it on the audio clock and reading back `outputLatency` gives
-a far more honest measurement than an `<audio>` element, whose playback start
-can drift by tens of milliseconds.
+They're scheduled on the Web Audio clock rather than played through `<audio>`
+elements, which matters for reaction timing: `<audio>` playback can drift by
+tens of milliseconds, while buffer scheduling is sample-accurate. The start
+clip is trimmed to its exact onset sample, so the instant we schedule is the
+instant the swimmer hears it.
 
 ## Files
 

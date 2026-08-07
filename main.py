@@ -9,7 +9,7 @@ Three modes:
 Sequence (as called at a meet):
     "Nadadores, a órdenes del árbitro"
         -> pausa aleatoria
-    pi· pi· pi· pi·  piiiiiii      (cuatro rápidos + uno largo y claro)
+    pi· pi· pi·  piiiiiiii          (tres cortos + uno largo)
         -> pausa aleatoria
     "En sus marcas"
         -> pausa aleatoria (la importante)
@@ -68,16 +68,16 @@ STEP_TEXT = {
 
 STEP_BUTTON = {
     STEP_ARBITRO: "1 · A órdenes del árbitro",
-    STEP_SILBATOS: "2 · Cinco pitidos",
+    STEP_SILBATOS: "2 · Pitidos del árbitro",
     STEP_MARCAS: "3 · En sus marcas",
     STEP_SALIDA: "4 · ¡SEÑAL DE SALIDA!",
 }
 
 # Measured lengths of the cue clips, so the randomised gap starts counting
 # only after the audio has finished rather than overlapping it.
-DUR_ARBITRO = 1.97
-DUR_BEEPS = 2.26     # 4 fast beeps + the long clear fifth
-DUR_MARCAS = 0.87
+DUR_ARBITRO = 2.02
+DUR_BEEPS = 3.59     # real recording: 3 short beeps + 1 long
+DUR_MARCAS = 1.34
 
 
 def lbl(text, size=14, color=TEXT_MUTED, bold=False, halign="left", **kw):
@@ -240,7 +240,7 @@ class TrainScreen(BoxLayout):
         items = [
             ("Árbitro", False),
             ("%g-%gs" % (self.s("g1_min"), self.s("g1_max")), False),
-            ("5 pitidos", False),
+            ("Pitidos", False),
             ("%g-%gs" % (self.s("g2_min"), self.s("g2_max")), False),
             ("Marcas", False),
             ("%g-%gs" % (self.s("g3_min"), self.s("g3_max")), True),

@@ -8,10 +8,10 @@ source.include_exts = py,ogg,png,jpg,kv,atlas
 
 # docs/ is the web version — its audio and icons match the include filters, so
 # without this the whole PWA gets bundled inside the APK for nothing.
-source.exclude_dirs = docs,bin,.buildozer,.github,.git,__pycache__,.venv-build
+source.exclude_dirs = docs,bin,recordings,.buildozer,.github,.git,__pycache__,.venv-build
 source.exclude_patterns = build-local.sh,*.md
 
-version = 1.0
+version = 1.2.0
 
 requirements = python3,kivy
 

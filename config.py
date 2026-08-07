@@ -14,9 +14,9 @@ import os
 DEFAULTS = {
     # pause before the sequence begins at all
     "pre_min": 1.0, "pre_max": 2.5,
-    # "Nadadores, a órdenes del árbitro"  ->  five beeps
+    # "Nadadores, a órdenes del árbitro"  ->  referee beeps
     "g1_min": 1.0, "g1_max": 3.0,
-    # five beeps  ->  "En sus marcas"
+    # referee beeps  ->  "En sus marcas"
     "g2_min": 1.0, "g2_max": 3.0,
     # "En sus marcas"  ->  start signal   (the critical, most random window)
     "g3_min": 1.0, "g3_max": 8.0,
@@ -28,8 +28,8 @@ DEFAULTS = {
 
 RANGE_FIELDS = [
     ("pre", "Antes de empezar", "Pausa inicial tras pulsar Iniciar"),
-    ("g1", "Tras «a órdenes del árbitro»", "Hasta los cinco pitidos"),
-    ("g2", "Tras los cinco pitidos", "Hasta «En sus marcas»"),
+    ("g1", "Tras «a órdenes del árbitro»", "Hasta los pitidos del árbitro"),
+    ("g2", "Tras los pitidos", "Hasta «En sus marcas»"),
     ("g3", "Tras «En sus marcas»", "Hasta la señal de salida"),
 ]
 

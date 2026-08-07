@@ -15,7 +15,7 @@ Two builds, same features:
 ```
 "Nadadores, a órdenes del árbitro"
       ↓  pausa aleatoria
-pi · pi · pi · pi   ·   piiiiiiii      (cuatro rápidos + uno largo y claro)
+pi · pi · pi   ·   piiiiiiii           (tres cortos + uno largo)
       ↓  pausa aleatoria
 "En sus marcas"
       ↓  pausa aleatoria  ← la más importante
@@ -61,7 +61,7 @@ Every pause has its own independent min–max window (**Ajustes** tab). Defaults
 | --- | --- |
 | Before the sequence starts | 1 – 2.5 s |
 | After "a órdenes del árbitro" | 1 – 3 s |
-| After the five beeps | 1 – 3 s |
+| After the referee beeps | 1 – 3 s |
 | After "En sus marcas" | **1 – 8 s** |
 
 So you can keep the early commands tight and make only the final window wildly
@@ -70,11 +70,14 @@ signal each have their own volume.
 
 ## Audio
 
-Voices are synthesised offline with eSpeak NG driving MBROLA `es2` diphone
-voices — noticeably more natural than plain formant synthesis. The referee cue
-is four fast electronic beeps followed by a longer, clearer fifth; the start
-signal is a hard, harmonically-stacked horn with a very fast attack, matching
-how real meets trigger starts.
+All four cues are **real recordings**, captured by the user and processed
+automatically: high-passed at 70 Hz to remove handling rumble, trimmed to the
+exact onset, peak-normalised to -1 dBFS, and encoded to Ogg Vorbis (Android)
+plus AAC (Safari). Source files live in `recordings/`.
+
+The start signal is trimmed to its precise onset sample, because reaction
+times are measured from the instant that sound begins — any leading silence
+would show up as added latency in every recorded time.
 
 To swap in your own recordings, drop replacements into `assets/` keeping the
 same filenames:
@@ -82,7 +85,7 @@ same filenames:
 ```
 v_arbitro.ogg      "Nadadores, a órdenes del árbitro"
 v_marcas.ogg       "En sus marcas"
-referee_beeps.ogg  the five beeps as one clip
+referee_beeps.ogg  the referee beeps as one clip (3 short + 1 long)
 start_beep.ogg     the start signal
 ```
 
@@ -118,6 +121,7 @@ main.py            Android app: modes, sequence engine, screens
 theme.py           custom Kivy widgets (water background, cards, sliders)
 config.py          settings + history persistence, grading
 assets/            audio cues (.ogg)
+recordings/        original source recordings + how to replace them
 buildozer.spec     Android packaging config
 build-local.sh     build the APK locally (WSL2/Linux), no CI needed
 docs/              web / PWA version, served by GitHub Pages

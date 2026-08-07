@@ -6,10 +6,10 @@
  *   TOQUE     measures how fast you tap after the start signal
  *   CÁMARA    measures how fast you physically move, via the camera
  *
- * The beeps and the start horn are synthesised with the Web Audio API
- * rather than played from files. That matters for the reaction mode: we know
- * the exact audio-clock time the horn begins, so the measurement isn't
- * polluted by file decode or <audio> element latency.
+ * All four cues are real recordings, decoded up front and scheduled on the
+ * Web Audio clock rather than played through <audio> elements. That keeps
+ * reaction timing honest: the start clip is trimmed to its exact onset
+ * sample, so we know precisely when the swimmer hears it.
  */
 (function () {
   "use strict";
@@ -26,8 +26,8 @@
 
   var RANGE_FIELDS = [
     ["pre", "Antes de empezar", "Pausa inicial tras pulsar Iniciar"],
-    ["g1", "Tras «a órdenes del árbitro»", "Hasta los cinco pitidos"],
-    ["g2", "Tras los cinco pitidos", "Hasta «En sus marcas»"],
+    ["g1", "Tras «a órdenes del árbitro»", "Hasta los pitidos del árbitro"],
+    ["g2", "Tras los pitidos", "Hasta «En sus marcas»"],
     ["g3", "Tras «En sus marcas»", "Hasta la señal de salida"]
   ];
 
@@ -135,7 +135,7 @@
         return !!(a.canPlayType && a.canPlayType('audio/ogg; codecs="vorbis"'));
       })();
       var ext = canOgg ? "ogg" : "m4a";
-      ["v_arbitro", "v_marcas"].forEach(function (name) {
+      ["v_arbitro", "v_marcas", "referee_beeps", "start_beep"].forEach(function (name) {
         fetch("audio/" + name + "." + ext)
           .then(function (r) { return r.arrayBuffer(); })
           .then(function (buf) {
@@ -187,90 +187,48 @@
       return g;
     },
 
-    playVoice: function (name) {
+    /* Play a recorded clip. Returns its duration so the sequence can wait
+       it out before starting the next randomised gap. */
+    playClip: function (name, volKey) {
       var ctx = this.unlock();
       if (!ctx || !this.buffers[name]) return 0;
       var when = ctx.currentTime + 0.02;
       var src = ctx.createBufferSource();
       src.buffer = this.buffers[name];
-      src.connect(this.gain(store.get("vol_voice"), when));
+      src.connect(this.gain(store.get(volKey || "vol_voice"), when));
       src.start(when);
       return this.buffers[name].duration;
     },
 
-    /* One beep. `clear` gives the long fifth its purer, brighter character. */
-    beep: function (when, dur, vol, f, clear) {
-      var ctx = this.ctx;
-      var out = this.gain(vol, when);
-
-      var env = ctx.createGain();
-      env.gain.setValueAtTime(0.0001, when);
-      env.gain.exponentialRampToValueAtTime(1.0, when + (clear ? 0.006 : 0.004));
-      env.gain.setValueAtTime(1.0, when + dur - (clear ? 0.07 : 0.018));
-      env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-      env.connect(out);
-
-      // fewer/quieter harmonics on the fifth = reads as "clearer"
-      var partials = clear
-        ? [[1, 1.0], [2, 0.30], [3, 0.10]]
-        : [[1, 1.0], [2, 0.55], [3, 0.22]];
-
-      partials.forEach(function (h) {
-        var o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.setValueAtTime(f * h[0], when);
-        var g = ctx.createGain();
-        g.gain.setValueAtTime(h[1] * 0.5, when);
-        o.connect(g); g.connect(env);
-        o.start(when); o.stop(when + dur + 0.02);
-      });
+    playVoice: function (name) {
+      return this.playClip(name, "vol_voice");
     },
 
-    /* Referee: four fast beeps then a long, clearer fifth.
-       Returns the total duration so the sequence can wait it out. */
+    /* Referee beeps — the real recording (3 short + 1 long). */
     playBeeps: function () {
-      var ctx = this.unlock();
-      if (!ctx) return 0;
-      var vol = store.get("vol_whistle");
-      var t = ctx.currentTime + 0.03;
-      var SHORT = 0.10, STEP = 0.30;
-      for (var i = 0; i < 4; i++) {
-        this.beep(t + i * STEP, SHORT, vol * 0.62, 1620, false);
-      }
-      this.beep(t + 4 * STEP + 0.16, 0.90, vol, 1980, true);
-      return 2.26;
+      return this.playClip("referee_beeps", "vol_whistle") || 3.59;
     },
 
-    /* Start signal: hard, harmonically stacked, very fast attack */
+    /* Start signal — the real recording.
+     *
+     * The clip is trimmed to its exact onset sample, so the sound begins at
+     * `when` with nothing in front of it. Scheduling on the audio clock is
+     * sample-accurate, so a recorded file measures just as honestly as the
+     * synthesised tone did — we still know precisely when it fires. */
     playStart: function () {
       var ctx = this.unlock();
-      if (!ctx) return { at: performance.now(), dur: 0.62 };
-      var vol = store.get("vol_start");
+      var buf = this.buffers["start_beep"];
+      if (!ctx || !buf) return { at: performance.now(), dur: 0.6 };
+
       var when = ctx.currentTime + 0.03;
-      var dur = 0.62, f = 990;
+      var src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this.gain(store.get("vol_start"), when));
+      src.start(when);
 
-      var out = this.gain(vol, when);
-      var env = ctx.createGain();
-      env.gain.setValueAtTime(0.0001, when);
-      env.gain.exponentialRampToValueAtTime(1.0, when + 0.003);
-      env.gain.setValueAtTime(1.0, when + dur - 0.06);
-      env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-      env.connect(out);
-
-      [[1, 1.0], [2, 0.70], [3, 0.45], [4, 0.28], [5, 0.16]].forEach(function (h) {
-        var o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.setValueAtTime(f * h[0], when);
-        var g = ctx.createGain();
-        g.gain.setValueAtTime(h[1] * 0.34, when);
-        o.connect(g); g.connect(env);
-        o.start(when); o.stop(when + dur + 0.02);
-      });
-
-      // wall-clock instant the horn actually begins, for reaction timing
       var lead = (when - ctx.currentTime) * 1000;
       var latency = (ctx.outputLatency || ctx.baseLatency || 0) * 1000;
-      return { at: performance.now() + lead + latency, dur: dur };
+      return { at: performance.now() + lead + latency, dur: buf.duration };
     },
 
     stopAll: function () {
@@ -522,7 +480,7 @@
       };
       items = [
         ["Árbitro", false], [r("g1"), false],
-        ["5 pitidos", false], [r("g2"), false],
+        ["Pitidos", false], [r("g2"), false],
         ["Marcas", false], [r("g3"), true],
         ["SALIDA", true]
       ];
@@ -614,21 +572,21 @@
   function stepArbitro() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[0], null, "");
-    var d = audio.playVoice("v_arbitro") || 1.97;
+    var d = audio.playVoice("v_arbitro") || 2.02;
     after(d + randGap("g1"), stepWhistles);
   }
 
   function stepWhistles() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[1], null, "");
-    var d = audio.playBeeps() || 2.26;
+    var d = audio.playBeeps() || 3.59;
     after(d + randGap("g2"), stepMarcas);
   }
 
   function stepMarcas() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[2], null, "");
-    var d = audio.playVoice("v_marcas") || 0.87;
+    var d = audio.playVoice("v_marcas") || 1.34;
     // The swimmer is now still on the block, so this quiet window is exactly
     // when to measure the camera's noise floor.
     if (state.mode === MODE.CAMERA && camera.on) {

@@ -1,5 +1,5 @@
 /* Offline cache so the trainer works poolside with no signal. */
-var CACHE = "salidas-v1";
+var CACHE = "salidas-v2";   // bump = evict the old synthesised audio
 var ASSETS = [
   "./",
   "index.html",
@@ -10,6 +10,10 @@ var ASSETS = [
   "audio/v_arbitro.m4a",
   "audio/v_marcas.ogg",
   "audio/v_marcas.m4a",
+  "audio/referee_beeps.ogg",
+  "audio/referee_beeps.m4a",
+  "audio/start_beep.ogg",
+  "audio/start_beep.m4a",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/apple-touch-icon.png"

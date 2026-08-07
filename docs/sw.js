@@ -1,5 +1,5 @@
 /* Offline cache so the trainer works poolside with no signal. */
-var CACHE = "salidas-v2";   // bump = evict the old synthesised audio
+var CACHE = "salidas-v3";   // bump = evict the old synthesised audio
 var ASSETS = [
   "./",
   "index.html",

@@ -75,9 +75,18 @@ automatically: high-passed at 70 Hz to remove handling rumble, trimmed to the
 exact onset, peak-normalised to -1 dBFS, and encoded to Ogg Vorbis (Android)
 plus AAC (Safari). Source files live in `recordings/`.
 
-The start signal is trimmed to its precise onset sample, because reaction
-times are measured from the instant that sound begins — any leading silence
-would show up as added latency in every recorded time.
+Leading silence is trimmed from every clip, so nothing gives a swimmer an
+early cue and reaction times aren't inflated by dead air:
+
+| Clip | Sound starts at |
+| --- | --- |
+| `start_beep` | ~1 ms (faint room tone), horn proper at ~13 ms |
+| `referee_beeps` | ~19 ms |
+| `v_arbitro`, `v_marcas` | ~33 ms — the natural soft start of the word; trimming further would clip the consonant |
+
+The ~13 ms before the horn's first cycle is the recording's own room tone at
+1-4% of peak. It is inaudible in practice and is kept because cutting into the
+attack changes how the signal sounds.
 
 To swap in your own recordings, drop replacements into `assets/` keeping the
 same filenames:

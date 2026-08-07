@@ -75,9 +75,9 @@ STEP_BUTTON = {
 
 # Measured lengths of the cue clips, so the randomised gap starts counting
 # only after the audio has finished rather than overlapping it.
-DUR_ARBITRO = 2.02
-DUR_BEEPS = 3.59     # real recording: 3 short beeps + 1 long
-DUR_MARCAS = 1.34
+DUR_ARBITRO = 2.04
+DUR_BEEPS = 3.60     # real recording: 3 short beeps + 1 long
+DUR_MARCAS = 1.36
 
 
 def lbl(text, size=14, color=TEXT_MUTED, bold=False, halign="left", **kw):

@@ -123,13 +123,19 @@
   var audio = {
     ctx: null,
     buffers: {},
-    raw: {},          // downloaded bytes, held until a context exists to decode with
+    raw: {},                           // downloaded bytes, awaiting decode
+    pending: null, pendingVol: null,   // a press that arrived mid-decode
 
     // Download the voice files immediately on page load. Fetching needs no
     // user gesture — only playback does — so by the time anyone presses
     // INICIAR the bytes are already here and the first run has sound.
     prefetch: function () {
       var self = this;
+      // Create the context now rather than on the first tap. A context made
+      // without a user gesture simply starts suspended, which is fine —
+      // decodeAudioData still runs — and it means the clips are decoded
+      // during page load instead of racing the user's first press.
+      this.init();
       var canOgg = (function () {
         var a = document.createElement("audio");
         return !!(a.canPlayType && a.canPlayType('audio/ogg; codecs="vorbis"'));
@@ -140,7 +146,7 @@
           .then(function (r) { return r.arrayBuffer(); })
           .then(function (buf) {
             self.raw[name] = buf;
-            if (self.ctx) self.decode(name);
+            self.decode(name);
           })
           .catch(function () { /* stay silent rather than block the sequence */ });
       });
@@ -151,13 +157,19 @@
       if (!this.ctx || !this.raw[name] || this.buffers[name]) return;
       var bytes = this.raw[name];
       this.raw[name] = null;
+
+      var done = function (d) {
+        self.buffers[name] = d;
+        // If someone pressed the button while this was still decoding, honour
+        // that press now instead of silently swallowing it.
+        if (self.pending === name) {
+          self.pending = null;
+          self.playClip(name, self.pendingVol);
+        }
+      };
       try {
-        var p = this.ctx.decodeAudioData(
-          bytes,
-          function (d) { self.buffers[name] = d; },
-          function () {}
-        );
-        if (p && p.then) p.then(function (d) { self.buffers[name] = d; }, function () {});
+        var p = this.ctx.decodeAudioData(bytes, done, function () {});
+        if (p && p.then) p.then(done, function () {});
       } catch (e) { /* ignore */ }
     },
 
@@ -191,7 +203,14 @@
        it out before starting the next randomised gap. */
     playClip: function (name, volKey) {
       var ctx = this.unlock();
-      if (!ctx || !this.buffers[name]) return 0;
+      if (!ctx) return 0;
+      if (!this.buffers[name]) {
+        // still decoding (slow network / very first press) — remember the
+        // request so decode() can fire it the instant the buffer lands
+        this.pending = name;
+        this.pendingVol = volKey || "vol_voice";
+        return 0;
+      }
       var when = ctx.currentTime + 0.02;
       var src = ctx.createBufferSource();
       src.buffer = this.buffers[name];
@@ -206,13 +225,13 @@
 
     /* Referee beeps — the real recording (3 short + 1 long). */
     playBeeps: function () {
-      return this.playClip("referee_beeps", "vol_whistle") || 3.59;
+      return this.playClip("referee_beeps", "vol_whistle") || 3.60;
     },
 
     /* Start signal — the real recording.
      *
-     * The clip is trimmed to its exact onset sample, so the sound begins at
-     * `when` with nothing in front of it. Scheduling on the audio clock is
+     * The clip is trimmed to its onset, so the sound begins essentially at
+     * `when` and the measured reaction time is honest. Scheduling on the audio clock is
      * sample-accurate, so a recorded file measures just as honestly as the
      * synthesised tone did — we still know precisely when it fires. */
     playStart: function () {
@@ -572,21 +591,21 @@
   function stepArbitro() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[0], null, "");
-    var d = audio.playVoice("v_arbitro") || 2.02;
+    var d = audio.playVoice("v_arbitro") || 2.04;
     after(d + randGap("g1"), stepWhistles);
   }
 
   function stepWhistles() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[1], null, "");
-    var d = audio.playBeeps() || 3.59;
+    var d = audio.playBeeps() || 3.60;
     after(d + randGap("g2"), stepMarcas);
   }
 
   function stepMarcas() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[2], null, "");
-    var d = audio.playVoice("v_marcas") || 1.34;
+    var d = audio.playVoice("v_marcas") || 1.36;
     // The swimmer is now still on the block, so this quiet window is exactly
     // when to measure the camera's noise floor.
     if (state.mode === MODE.CAMERA && camera.on) {

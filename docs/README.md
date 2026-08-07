@@ -41,12 +41,54 @@ After the first load everything is cached, so it works poolside with no signal.
   (iOS 16.4+). On older iOS the screen may dim mid-sequence; the audio keeps
   playing.
 
+## Modes
+
+| Mode | What it measures |
+| --- | --- |
+| **AUTO** | Nothing — just plays the sequence hands-free. |
+| **MANUAL** | Nothing — you fire each command yourself. |
+| **TOQUE** | How fast you tap the screen after the start signal. |
+| **CÁMARA** | How fast you physically *move*, detected through the camera. |
+
+### CÁMARA mode
+
+Prop the phone so it sees the swimmer on the block, tap **ACTIVAR CÁMARA**,
+grant permission, then run the sequence as normal.
+
+It works by frame-differencing: every camera frame is compared with the last
+one, and the moment the picture changes more than the calibrated noise floor
+counts as the start. During "En sus marcas" — when the swimmer is deliberately
+still — it measures the background noise (rippling water, shifting light) and
+sets the trigger above it. Movement *before* the signal is flagged as a false
+start, same as a real meet.
+
+Deliberately not pose/ML detection: no model to download, runs on any phone,
+and adds no inference delay, which matters when the whole event is ~200 ms.
+
+**Accuracy is bounded by the camera frame rate — ±1 frame.** That's about
+±17 ms at 60 fps, ±33 ms at 30 fps. The status line shows the actual rate and
+margin once the camera is live. Compared with the touch mode (sub-millisecond),
+camera timing is coarser, so treat it as "close enough to coach with", not as
+an official timing system.
+
+Things that will trip it up, and what to do:
+
+- **Moving water, shifting sunlight, people walking behind.** Aim tighter on
+  the swimmer, or lower the sensitivity in Ajustes.
+- **A handheld phone.** Camera shake is motion. Prop it against something.
+- **Very dark pools.** Low light means grainy frames means a high noise floor;
+  it'll still work but the threshold rises and small movements may be missed.
+
+The live meter under the video shows the current motion level, so you can wave
+a hand and confirm it's actually seeing the lane before you trust a time.
+
 ## How the audio works
 
 The two spoken lines are audio files (`.ogg` with an `.m4a` fallback, because
-Safari's Ogg Vorbis support is unreliable). The three whistles and the start
-horn are **synthesised live** with the Web Audio API rather than played from
-files.
+Safari's Ogg Vorbis support is unreliable) and are downloaded at page load, so
+the very first run has sound. The five referee beeps — four fast ones then a
+longer, clearer fifth — and the start horn are **synthesised live** with the
+Web Audio API rather than played from files.
 
 That's deliberate: for reaction timing we need to know exactly when the horn
 begins. Scheduling it on the audio clock and reading back `outputLatency` gives

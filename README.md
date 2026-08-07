@@ -15,7 +15,7 @@ Two builds, same features:
 ```
 "Nadadores, a órdenes del árbitro"
       ↓  pausa aleatoria
-silbato · silbato · silbatooooo        (el tercero, largo)
+pi · pi · pi · pi   ·   piiiiiiii      (cuatro rápidos + uno largo y claro)
       ↓  pausa aleatoria
 "En sus marcas"
       ↓  pausa aleatoria  ← la más importante
@@ -29,6 +29,9 @@ SEÑAL DE SALIDA                        (bocina dura)
 | **Auto** | Plays the whole sequence hands-free with randomised gaps. |
 | **Manual** | You fire each command yourself, one button per step — for standing on deck and starting another swimmer at your own pace. |
 | **Reacción** | Runs the sequence, then measures how fast you tap the screen after the start signal. Logs the time with a grade. |
+
+The web version adds a fourth mode, **Cámara**, which measures how fast you
+physically move instead of how fast you tap — see [`docs/README.md`](docs/README.md).
 
 In Reacción mode, tapping *before* the signal is caught as **SALIDA EN FALSO**
 (false start) and is not recorded.
@@ -58,7 +61,7 @@ Every pause has its own independent min–max window (**Ajustes** tab). Defaults
 | --- | --- |
 | Before the sequence starts | 1 – 2.5 s |
 | After "a órdenes del árbitro" | 1 – 3 s |
-| After the three whistles | 1 – 3 s |
+| After the five beeps | 1 – 3 s |
 | After "En sus marcas" | **1 – 8 s** |
 
 So you can keep the early commands tight and make only the final window wildly
@@ -68,10 +71,10 @@ signal each have their own volume.
 ## Audio
 
 Voices are synthesised offline with eSpeak NG driving MBROLA `es2` diphone
-voices — noticeably more natural than plain formant synthesis. The whistles are
-modelled as a trilling pea-whistle (fundamental + harmonics + breath noise) and
-the start signal is a hard, harmonically-stacked electronic horn with a very
-fast attack, matching how real meets trigger starts.
+voices — noticeably more natural than plain formant synthesis. The referee cue
+is four fast electronic beeps followed by a longer, clearer fifth; the start
+signal is a hard, harmonically-stacked horn with a very fast attack, matching
+how real meets trigger starts.
 
 To swap in your own recordings, drop replacements into `assets/` keeping the
 same filenames:
@@ -79,7 +82,7 @@ same filenames:
 ```
 v_arbitro.ogg      "Nadadores, a órdenes del árbitro"
 v_marcas.ogg       "En sus marcas"
-referee_beeps.ogg  the three whistles as one clip
+referee_beeps.ogg  the five beeps as one clip
 start_beep.ogg     the start signal
 ```
 

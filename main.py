@@ -9,7 +9,7 @@ Three modes:
 Sequence (as called at a meet):
     "Nadadores, a órdenes del árbitro"
         -> pausa aleatoria
-    silbato, silbato, silbatoooo      (tercero largo)
+    pi· pi· pi· pi·  piiiiiii      (cuatro rápidos + uno largo y claro)
         -> pausa aleatoria
     "En sus marcas"
         -> pausa aleatoria (la importante)
@@ -61,17 +61,23 @@ STEP_SALIDA = 3
 
 STEP_TEXT = {
     STEP_ARBITRO: "Nadadores,\na órdenes del árbitro",
-    STEP_SILBATOS: "Silbatos del árbitro",
+    STEP_SILBATOS: "Pitidos del árbitro",
     STEP_MARCAS: "En sus marcas",
     STEP_SALIDA: "¡SALIDA!",
 }
 
 STEP_BUTTON = {
     STEP_ARBITRO: "1 · A órdenes del árbitro",
-    STEP_SILBATOS: "2 · Tres silbatos",
+    STEP_SILBATOS: "2 · Cinco pitidos",
     STEP_MARCAS: "3 · En sus marcas",
     STEP_SALIDA: "4 · ¡SEÑAL DE SALIDA!",
 }
+
+# Measured lengths of the cue clips, so the randomised gap starts counting
+# only after the audio has finished rather than overlapping it.
+DUR_ARBITRO = 1.97
+DUR_BEEPS = 2.26     # 4 fast beeps + the long clear fifth
+DUR_MARCAS = 0.87
 
 
 def lbl(text, size=14, color=TEXT_MUTED, bold=False, halign="left", **kw):
@@ -234,7 +240,7 @@ class TrainScreen(BoxLayout):
         items = [
             ("Árbitro", False),
             ("%g-%gs" % (self.s("g1_min"), self.s("g1_max")), False),
-            ("3 silbatos", False),
+            ("5 pitidos", False),
             ("%g-%gs" % (self.s("g2_min"), self.s("g2_max")), False),
             ("Marcas", False),
             ("%g-%gs" % (self.s("g3_min"), self.s("g3_max")), True),
@@ -330,21 +336,21 @@ class TrainScreen(BoxLayout):
             return
         self.show_step(STEP_ARBITRO)
         self.app.audio.play("arbitro")
-        self.after(1.9 + self.rand_gap("g1"), self.step_silbatos)
+        self.after(DUR_ARBITRO + self.rand_gap("g1"), self.step_silbatos)
 
     def step_silbatos(self):
         if not self.running:
             return
         self.show_step(STEP_SILBATOS)
         self.app.audio.play("silbatos")
-        self.after(1.85 + self.rand_gap("g2"), self.step_marcas)
+        self.after(DUR_BEEPS + self.rand_gap("g2"), self.step_marcas)
 
     def step_marcas(self):
         if not self.running:
             return
         self.show_step(STEP_MARCAS)
         self.app.audio.play("marcas")
-        self.after(0.85 + self.rand_gap("g3"), self.step_salida)
+        self.after(DUR_MARCAS + self.rand_gap("g3"), self.step_salida)
 
     def step_salida(self):
         if not self.running:
@@ -599,7 +605,7 @@ class SettingsScreen(ScrollView):
         self.box.add_widget(lbl("VOLUMEN", size=11, color=TEXT_FAINT,
                                 bold=True, size_hint_y=None, height=dp(20)))
         for key, title in (("vol_voice", "Voz del árbitro"),
-                           ("vol_whistle", "Silbatos"),
+                           ("vol_whistle", "Pitidos del árbitro"),
                            ("vol_start", "Señal de salida")):
             self.box.add_widget(self.volume_card(key, title))
 

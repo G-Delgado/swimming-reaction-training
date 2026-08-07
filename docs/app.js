@@ -3,9 +3,10 @@
  * Mirrors the Android app feature-for-feature:
  *   AUTO      full sequence, randomised gaps
  *   MANUAL    coach fires each command
- *   REACCIÓN  measures how fast you tap after the start signal
+ *   TOQUE     measures how fast you tap after the start signal
+ *   CÁMARA    measures how fast you physically move, via the camera
  *
- * The whistles and the start horn are synthesised with the Web Audio API
+ * The beeps and the start horn are synthesised with the Web Audio API
  * rather than played from files. That matters for the reaction mode: we know
  * the exact audio-clock time the horn begins, so the measurement isn't
  * polluted by file decode or <audio> element latency.
@@ -19,19 +20,20 @@
     g1_min: 1.0, g1_max: 3.0,
     g2_min: 1.0, g2_max: 3.0,
     g3_min: 1.0, g3_max: 8.0,
-    vol_voice: 1.0, vol_whistle: 1.0, vol_start: 1.0
+    vol_voice: 1.0, vol_whistle: 1.0, vol_start: 1.0,
+    cam_sens: 1.0
   };
 
   var RANGE_FIELDS = [
     ["pre", "Antes de empezar", "Pausa inicial tras pulsar Iniciar"],
-    ["g1", "Tras «a órdenes del árbitro»", "Hasta los tres silbatos"],
-    ["g2", "Tras los tres silbatos", "Hasta «En sus marcas»"],
+    ["g1", "Tras «a órdenes del árbitro»", "Hasta los cinco pitidos"],
+    ["g2", "Tras los cinco pitidos", "Hasta «En sus marcas»"],
     ["g3", "Tras «En sus marcas»", "Hasta la señal de salida"]
   ];
 
   var VOLUME_FIELDS = [
     ["vol_voice", "Voz del árbitro"],
-    ["vol_whistle", "Silbatos"],
+    ["vol_whistle", "Pitidos del árbitro"],
     ["vol_start", "Señal de salida"]
   ];
 
@@ -121,25 +123,12 @@
   var audio = {
     ctx: null,
     buffers: {},
-    ready: false,
+    raw: {},          // downloaded bytes, held until a context exists to decode with
 
-    init: function () {
-      if (this.ctx) return this.ctx;
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      this.ctx = new AC();
-      this.loadVoices();
-      return this.ctx;
-    },
-
-    // iOS suspends the context unless resumed from a user gesture
-    unlock: function () {
-      var ctx = this.init();
-      if (ctx && ctx.state === "suspended") ctx.resume();
-      return ctx;
-    },
-
-    loadVoices: function () {
+    // Download the voice files immediately on page load. Fetching needs no
+    // user gesture — only playback does — so by the time anyone presses
+    // INICIAR the bytes are already here and the first run has sound.
+    prefetch: function () {
       var self = this;
       var canOgg = (function () {
         var a = document.createElement("audio");
@@ -150,15 +139,45 @@
         fetch("audio/" + name + "." + ext)
           .then(function (r) { return r.arrayBuffer(); })
           .then(function (buf) {
-            return new Promise(function (res, rej) {
-              // callback form for older Safari
-              var p = self.ctx.decodeAudioData(buf, res, rej);
-              if (p && p.then) p.then(res, rej);
-            });
+            self.raw[name] = buf;
+            if (self.ctx) self.decode(name);
           })
-          .then(function (decoded) { self.buffers[name] = decoded; })
-          .catch(function () { /* voice stays silent rather than blocking */ });
+          .catch(function () { /* stay silent rather than block the sequence */ });
       });
+    },
+
+    decode: function (name) {
+      var self = this;
+      if (!this.ctx || !this.raw[name] || this.buffers[name]) return;
+      var bytes = this.raw[name];
+      this.raw[name] = null;
+      try {
+        var p = this.ctx.decodeAudioData(
+          bytes,
+          function (d) { self.buffers[name] = d; },
+          function () {}
+        );
+        if (p && p.then) p.then(function (d) { self.buffers[name] = d; }, function () {});
+      } catch (e) { /* ignore */ }
+    },
+
+    init: function () {
+      if (this.ctx) return this.ctx;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      this.ctx = new AC();
+      var self = this;
+      Object.keys(this.raw).forEach(function (n) { self.decode(n); });
+      return this.ctx;
+    },
+
+    // iOS suspends the context unless resumed from a user gesture
+    unlock: function () {
+      var ctx = this.init();
+      if (ctx && ctx.state === "suspended") ctx.resume();
+      var self = this;
+      Object.keys(this.raw).forEach(function (n) { self.decode(n); });
+      return ctx;
     },
 
     gain: function (vol, when) {
@@ -179,63 +198,47 @@
       return this.buffers[name].duration;
     },
 
-    /* Referee pea-whistle: fundamental + harmonics, fast trill, breath noise */
-    whistle: function (when, dur, vol) {
-      var ctx = this.ctx, f0 = 2350;
+    /* One beep. `clear` gives the long fifth its purer, brighter character. */
+    beep: function (when, dur, vol, f, clear) {
+      var ctx = this.ctx;
       var out = this.gain(vol, when);
 
       var env = ctx.createGain();
       env.gain.setValueAtTime(0.0001, when);
-      env.gain.exponentialRampToValueAtTime(0.9, when + 0.012);
-      env.gain.setValueAtTime(0.9, when + dur - 0.04);
+      env.gain.exponentialRampToValueAtTime(1.0, when + (clear ? 0.006 : 0.004));
+      env.gain.setValueAtTime(1.0, when + dur - (clear ? 0.07 : 0.018));
       env.gain.exponentialRampToValueAtTime(0.0001, when + dur);
       env.connect(out);
 
-      // the rattling pea = fast frequency wobble
-      var lfo = ctx.createOscillator();
-      lfo.frequency.setValueAtTime(38, when);
-      var lfoAmt = ctx.createGain();
-      lfoAmt.gain.setValueAtTime(110, when);
-      lfo.connect(lfoAmt);
+      // fewer/quieter harmonics on the fifth = reads as "clearer"
+      var partials = clear
+        ? [[1, 1.0], [2, 0.30], [3, 0.10]]
+        : [[1, 1.0], [2, 0.55], [3, 0.22]];
 
-      [[1, 1.0], [2, 0.42], [3, 0.12]].forEach(function (h) {
+      partials.forEach(function (h) {
         var o = ctx.createOscillator();
         o.type = "sine";
-        o.frequency.setValueAtTime(f0 * h[0], when);
-        lfoAmt.connect(o.frequency);
+        o.frequency.setValueAtTime(f * h[0], when);
         var g = ctx.createGain();
-        g.gain.setValueAtTime(h[1], when);
+        g.gain.setValueAtTime(h[1] * 0.5, when);
         o.connect(g); g.connect(env);
         o.start(when); o.stop(when + dur + 0.02);
       });
-
-      // breathy air
-      var n = Math.floor(ctx.sampleRate * (dur + 0.02));
-      var nb = ctx.createBuffer(1, n, ctx.sampleRate);
-      var d = nb.getChannelData(0);
-      for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * 0.22;
-      var ns = ctx.createBufferSource();
-      ns.buffer = nb;
-      var nf = ctx.createBiquadFilter();
-      nf.type = "bandpass";
-      nf.frequency.setValueAtTime(f0, when);
-      nf.Q.setValueAtTime(4, when);
-      ns.connect(nf); nf.connect(env);
-      ns.start(when); ns.stop(when + dur + 0.02);
-
-      lfo.start(when); lfo.stop(when + dur + 0.02);
     },
 
-    /* Three referee whistles: short, short, long. Returns total duration. */
-    playWhistles: function () {
+    /* Referee: four fast beeps then a long, clearer fifth.
+       Returns the total duration so the sequence can wait it out. */
+    playBeeps: function () {
       var ctx = this.unlock();
       if (!ctx) return 0;
       var vol = store.get("vol_whistle");
       var t = ctx.currentTime + 0.03;
-      this.whistle(t, 0.20, vol);
-      this.whistle(t + 0.40, 0.20, vol);
-      this.whistle(t + 0.80, 1.05, vol);
-      return 1.85;
+      var SHORT = 0.10, STEP = 0.30;
+      for (var i = 0; i < 4; i++) {
+        this.beep(t + i * STEP, SHORT, vol * 0.62, 1620, false);
+      }
+      this.beep(t + 4 * STEP + 0.16, 0.90, vol, 1980, true);
+      return 2.26;
     },
 
     /* Start signal: hard, harmonically stacked, very fast attack */
@@ -277,16 +280,166 @@
     }
   };
 
+  // ------------------------------------------------------- camera detector
+  /*
+   * Detects the instant the swimmer moves, by frame-differencing the camera
+   * feed. Deliberately not pose/ML detection: no model to download, runs on
+   * any phone, and adds no inference delay — which is the whole point when
+   * you're measuring a 200 ms event.
+   *
+   * Precision is bounded by the camera frame rate: ±1 frame, so ~17 ms at
+   * 60 fps and ~33 ms at 30 fps. requestVideoFrameCallback is used where
+   * available because it reports the true frame presentation time.
+   */
+  var W = 96, H = 72;
+
+  var camera = {
+    stream: null, video: null, cv: null, cx: null,
+    prev: null, on: false,
+    level: 0, baseline: 0, peak: 0,
+    calibrating: false, samples: [],
+    watch: null,          // callback fired when motion crosses the threshold
+    _raf: null,
+
+    supported: function () {
+      return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    },
+
+    start: function (onStatus) {
+      var self = this;
+      if (!this.supported()) {
+        onStatus("Este navegador no permite usar la cámara", true);
+        return Promise.reject();
+      }
+      this.video = $("camVideo");
+      this.cv = document.createElement("canvas");
+      this.cv.width = W; this.cv.height = H;
+      this.cx = this.cv.getContext("2d", { willReadFrequently: true });
+
+      return navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 640 }, height: { ideal: 480 },
+          frameRate: { ideal: 60 }
+        },
+        audio: false
+      }).then(function (s) {
+        self.stream = s;
+        self.video.srcObject = s;
+        return self.video.play().catch(function () {});
+      }).then(function () {
+        self.on = true;
+        self.prev = null;
+        var t = self.stream.getVideoTracks()[0];
+        var fps = (t && t.getSettings && t.getSettings().frameRate) || 30;
+        onStatus("Cámara activa · " + Math.round(fps) + " fps · ±" +
+                 Math.round(1000 / fps) + " ms", false);
+        self.loop();
+      }).catch(function (e) {
+        var msg = "No se pudo abrir la cámara";
+        if (e && e.name === "NotAllowedError") msg = "Permiso de cámara denegado";
+        else if (e && e.name === "NotFoundError") msg = "No se encontró cámara";
+        onStatus(msg, true);
+        throw e;
+      });
+    },
+
+    stop: function () {
+      this.on = false;
+      if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+      if (this.stream) {
+        this.stream.getTracks().forEach(function (t) { t.stop(); });
+        this.stream = null;
+      }
+      if (this.video) this.video.srcObject = null;
+      this.prev = null; this.level = 0;
+    },
+
+    /* mean absolute luma difference against the previous frame, 0..1 */
+    diff: function () {
+      if (!this.video || this.video.readyState < 2) return 0;
+      this.cx.drawImage(this.video, 0, 0, W, H);
+      var d = this.cx.getImageData(0, 0, W, H).data;
+      var n = W * H, cur = new Uint8Array(n), i, j, sum = 0;
+      for (i = 0, j = 0; j < n; i += 4, j++) {
+        cur[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+      }
+      if (this.prev) {
+        for (j = 0; j < n; j++) {
+          var a = cur[j] - this.prev[j];
+          sum += a < 0 ? -a : a;
+        }
+      }
+      this.prev = cur;
+      return this.prev ? sum / n / 255 : 0;
+    },
+
+    onFrame: function (tMs) {
+      if (!this.on) return;
+      var v = this.diff();
+      // light smoothing kills single-frame sensor noise without adding lag
+      this.level = this.level * 0.35 + v * 0.65;
+
+      if (this.calibrating) {
+        this.samples.push(this.level);
+        if (this.samples.length > 90) this.samples.shift();
+      }
+      if (this.watch) this.watch(this.level, tMs);
+      if (window.__camTick) window.__camTick(this.level);
+    },
+
+    loop: function () {
+      var self = this;
+      if (this.video && this.video.requestVideoFrameCallback) {
+        var step = function (now, meta) {
+          if (!self.on) return;
+          // true presentation time of this frame, mapped to performance.now()
+          var t = (meta && meta.expectedDisplayTime) || now;
+          self.onFrame(t);
+          self.video.requestVideoFrameCallback(step);
+        };
+        this.video.requestVideoFrameCallback(step);
+      } else {
+        var tick = function (now) {
+          if (!self.on) return;
+          self.onFrame(now);
+          self._raf = requestAnimationFrame(tick);
+        };
+        this._raf = requestAnimationFrame(tick);
+      }
+    },
+
+    beginCalibration: function () {
+      this.calibrating = true;
+      this.samples = [];
+    },
+
+    /* Turn the quiet-period samples into a trigger level. */
+    finishCalibration: function () {
+      this.calibrating = false;
+      var s = this.samples.slice().sort(function (a, b) { return a - b; });
+      if (!s.length) { this.baseline = 0.004; this.peak = 0.01; }
+      else {
+        this.baseline = s[Math.floor(s.length * 0.5)] || 0.002;
+        this.peak = s[s.length - 1] || this.baseline * 2;
+      }
+      var sens = store.get("cam_sens");        // 0.5 = twitchy, 3 = forgiving
+      // must clear both the typical noise and the worst observed spike
+      return Math.max(this.baseline * (2.2 * sens), this.peak * (1.35 * sens), 0.0045);
+    }
+  };
+
   // ---------------------------------------------------------------- state
-  var MODE = { AUTO: "auto", MANUAL: "manual", REACT: "react" };
+  var MODE = { AUTO: "auto", MANUAL: "manual", REACT: "react", CAMERA: "camera" };
   var MODE_HINT = {
     auto: "Secuencia completa sola",
     manual: "Tú das cada orden",
-    react: "Mide tu tiempo"
+    react: "Mide tu tiempo al tocar",
+    camera: "Mide tu tiempo por movimiento"
   };
   var STEP_TEXT = [
     "Nadadores,<br>a órdenes del árbitro",
-    "Silbatos del árbitro",
+    "Pitidos del árbitro",
     "En sus marcas",
     "¡SALIDA!"
   ];
@@ -298,6 +451,7 @@
     armed: false,
     tSignal: null,
     manualStep: 0,
+    camTrigger: 0,
     timers: [],
     wakeLock: null
   };
@@ -308,7 +462,9 @@
     chips: $("chips"), modeHint: $("modeHint"), primary: $("primary"),
     manualSteps: $("manualSteps"), historyList: $("historyList"),
     statBest: $("statBest"), statAvg: $("statAvg"), statN: $("statN"),
-    rangeFields: $("rangeFields"), volumeFields: $("volumeFields")
+    rangeFields: $("rangeFields"), volumeFields: $("volumeFields"),
+    camPanel: $("camPanel"), camStatus: $("camStatus"),
+    camBar: $("camBar"), camToggle: $("camToggle")
   };
 
   function clearTimers() {
@@ -366,7 +522,7 @@
       };
       items = [
         ["Árbitro", false], [r("g1"), false],
-        ["3 silbatos", false], [r("g2"), false],
+        ["5 pitidos", false], [r("g2"), false],
         ["Marcas", false], [r("g3"), true],
         ["SALIDA", true]
       ];
@@ -399,9 +555,12 @@
     state.armed = false;
     state.tSignal = null;
     state.manualStep = 0;
+    camera.watch = null;
     setFlash(null);
     releaseWake();
     restorePrimary();
+
+    el.camPanel.hidden = (state.mode !== MODE.CAMERA);
 
     if (state.mode === MODE.MANUAL) {
       el.manualSteps.hidden = false;
@@ -412,11 +571,19 @@
     } else {
       el.manualSteps.hidden = true;
       el.primary.textContent = "INICIAR";
+      var hint;
+      if (state.mode === MODE.REACT) {
+        hint = "Toca la pantalla en cuanto suene la señal.";
+      } else if (state.mode === MODE.CAMERA) {
+        hint = camera.on
+          ? "Apunta la cámara al nadador y pulsa INICIAR."
+          : "Activa la cámara para medir por movimiento.";
+      } else {
+        hint = "Escucha la secuencia completa y sal con la señal.";
+      }
       setStage("LISTO PARA EMPEZAR", null,
-               soft ? "Entrenador<br>de Salidas" : "Listo para<br>otra salida", null,
-               state.mode === MODE.REACT
-                 ? "Toca la pantalla en cuanto suene la señal."
-                 : "Escucha la secuencia completa y sal con la señal.");
+               soft ? "Entrenador<br>de Salidas" : "Listo para<br>otra salida",
+               null, hint);
     }
   }
 
@@ -444,21 +611,27 @@
   function stepArbitro() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[0], null, "");
-    var d = audio.playVoice("v_arbitro") || 1.9;
+    var d = audio.playVoice("v_arbitro") || 1.97;
     after(d + randGap("g1"), stepWhistles);
   }
 
   function stepWhistles() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[1], null, "");
-    var d = audio.playWhistles() || 1.85;
+    var d = audio.playBeeps() || 2.26;
     after(d + randGap("g2"), stepMarcas);
   }
 
   function stepMarcas() {
     if (!state.running) return;
     setStage("EN CURSO", null, STEP_TEXT[2], null, "");
-    var d = audio.playVoice("v_marcas") || 0.85;
+    var d = audio.playVoice("v_marcas") || 0.87;
+    // The swimmer is now still on the block, so this quiet window is exactly
+    // when to measure the camera's noise floor.
+    if (state.mode === MODE.CAMERA && camera.on) {
+      camera.beginCalibration();
+      camera.watch = watchFalseStartCam;
+    }
     after(d + randGap("g3"), stepSalida);
   }
 
@@ -466,13 +639,46 @@
     if (!state.running) return;
     var res = audio.playStart();
     state.tSignal = res.at;
-    state.armed = (state.mode === MODE.REACT);
+    var measuring = (state.mode === MODE.REACT || state.mode === MODE.CAMERA);
+    state.armed = measuring;
+
+    if (state.mode === MODE.CAMERA && camera.on) {
+      state.camTrigger = camera.finishCalibration();
+      camera.watch = watchStartCam;
+    }
+
     setStage("¡FUERA!", "var(--emerald)", "¡SALIDA!", "huge",
-             state.mode === MODE.REACT ? "¡TOCA LA PANTALLA!" : "");
+             state.mode === MODE.REACT ? "¡TOCA LA PANTALLA!"
+             : state.mode === MODE.CAMERA ? "¡SAL YA!" : "");
     setFlash("go");
     fireRing();
-    if (state.mode === MODE.REACT) after(6.0, timeoutReact);
+    if (measuring) after(6.0, timeoutReact);
     else after(2.0, finishAuto);
+  }
+
+  /* Motion after the signal = the start. */
+  function watchStartCam(level, tMs) {
+    if (!state.armed || state.tSignal === null) return;
+    if (level < state.camTrigger) return;
+    camera.watch = null;
+    var ms = tMs - state.tSignal;
+    if (ms < 40) return;              // almost certainly the flash, not the swimmer
+    state.armed = false;
+    state.running = false;
+    clearTimers();
+    record(ms);
+  }
+
+  /* Motion before the signal = false start. */
+  function watchFalseStartCam(level) {
+    if (!state.running || state.armed) return;
+    // stricter than the start threshold so ordinary fidgeting doesn't DQ
+    var trig = Math.max(camera.peak * 2.2, camera.baseline * 4.0, 0.012);
+    if (camera.samples.length < 12) return;   // need a noise floor first
+    if (level > trig) {
+      camera.watch = null;
+      falseStart();
+    }
   }
 
   function timeoutReact() {
@@ -481,8 +687,9 @@
     state.running = false;
     setFlash(null);
     releaseWake();
-    setStage("SIN REGISTRO", "var(--amber)", "No hubo<br>toque", null,
-             "Pulsa INICIAR para intentarlo de nuevo.");
+    setStage("SIN REGISTRO", "var(--amber)",
+             state.mode === MODE.CAMERA ? "No se detectó<br>movimiento" : "No hubo<br>toque",
+             null, "Pulsa INICIAR para intentarlo de nuevo.");
     restorePrimary();
   }
 
@@ -507,7 +714,7 @@
   function manualFire(step) {
     audio.unlock();
     if (step === 0) audio.playVoice("v_arbitro");
-    else if (step === 1) audio.playWhistles();
+    else if (step === 1) audio.playBeeps();
     else if (step === 2) audio.playVoice("v_marcas");
     else audio.playStart();
 
@@ -542,6 +749,7 @@
   }
 
   function record(ms) {
+    camera.watch = null;
     store.addTime(ms);
     var g = gradeFor(ms);
     var best = store.best();
@@ -555,6 +763,7 @@
   }
 
   function falseStart() {
+    camera.watch = null;
     clearTimers();
     state.running = false;
     state.armed = false;
@@ -640,6 +849,37 @@
     });
 
     el.volumeFields.innerHTML = "";
+
+    // camera sensitivity lives with the other tunables
+    (function () {
+      var wrap = document.createElement("div");
+      wrap.className = "field";
+      wrap.innerHTML =
+        '<div class="field-head"><b>Sensibilidad de la cámara</b><span data-out></span></div>' +
+        '<small>Más alta detecta antes, pero se dispara con el oleaje o la luz</small>';
+      var out = wrap.querySelector("[data-out]");
+      var row = document.createElement("div");
+      row.className = "slider-row";
+      var inp = document.createElement("input");
+      inp.type = "range";
+      inp.min = "0.5"; inp.max = "3"; inp.step = "0.1";
+      // slider reads high->sensitive, stored value is a threshold multiplier
+      inp.value = (3.5 - store.get("cam_sens")).toFixed(1);
+      inp.setAttribute("aria-label", "Sensibilidad de la cámara");
+      function show() {
+        var s = 3.5 - store.get("cam_sens");
+        out.textContent = s >= 2.4 ? "Alta" : s >= 1.4 ? "Media" : "Baja";
+      }
+      inp.addEventListener("input", function () {
+        store.set("cam_sens", 3.5 - parseFloat(inp.value));
+        show();
+      });
+      show();
+      row.appendChild(inp);
+      wrap.appendChild(row);
+      el.volumeFields.appendChild(wrap);
+    })();
+
     VOLUME_FIELDS.forEach(function (f) {
       var key = f[0];
       var wrap = document.createElement("div");
@@ -680,6 +920,7 @@
   // ---------------------------------------------------------------- wiring
   function init() {
     store.load();
+    audio.prefetch();
 
     Array.prototype.forEach.call(document.querySelectorAll(".mode"), function (b) {
       b.addEventListener("click", function () { setMode(b.dataset.mode); });
@@ -701,6 +942,39 @@
       if (state.running) { reset(false); return; }
       startAuto();
     });
+
+    // ---- camera controls
+    function camStatus(text, isError) {
+      el.camStatus.textContent = text;
+      el.camStatus.className = "cam-status" + (isError ? " err" : text.indexOf("activa") >= 0 ? " live" : "");
+    }
+    el.camToggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (camera.on) {
+        camera.stop();
+        el.camToggle.textContent = "ACTIVAR CÁMARA";
+        el.camToggle.classList.remove("on");
+        camStatus("Cámara apagada", false);
+        el.camBar.style.width = "0%";
+        reset(true);
+      } else {
+        camStatus("Pidiendo permiso…", false);
+        camera.start(camStatus).then(function () {
+          el.camToggle.textContent = "APAGAR CÁMARA";
+          el.camToggle.classList.add("on");
+          reset(true);
+        }).catch(function () {
+          el.camToggle.textContent = "ACTIVAR CÁMARA";
+          el.camToggle.classList.remove("on");
+        });
+      }
+    });
+    // live motion meter, so you can see it reacting before trusting it
+    window.__camTick = function (level) {
+      var pct = Math.min(100, (level / 0.05) * 100);
+      el.camBar.style.width = pct.toFixed(0) + "%";
+      el.camBar.classList.toggle("hot", state.armed && level >= state.camTrigger);
+    };
 
     $("clearHistory").addEventListener("click", function () {
       store.clearHistory();
@@ -753,5 +1027,7 @@
   }
 
   // expose a little surface for automated checks
-  window.__salidas = { store: store, state: state, gradeFor: gradeFor, fmtMs: fmtMs };
+  window.__salidas = { store: store, state: state, gradeFor: gradeFor,
+                      fmtMs: fmtMs, camera: camera, audio: audio,
+                      watchStartCam: watchStartCam };
 })();

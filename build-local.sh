@@ -21,13 +21,21 @@ if [ ! -f buildozer.spec ]; then
 fi
 
 # --- system packages ---------------------------------------------------
+# libltdl-dev is easy to miss and is what defines LT_SYS_SYMBOL_USCORE, which
+# p4a's libffi recipe needs; without it autogen.sh dies deep into the build.
 echo "==> Installing system dependencies (sudo required)"
 sudo apt-get update
 sudo apt-get install -y \
-  git zip unzip openjdk-17-jdk python3-pip python3-venv \
-  autoconf libtool pkg-config zlib1g-dev libncurses-dev \
-  cmake libffi-dev libssl-dev build-essential ccache
-sudo apt-get install -y libtinfo6 || true
+  git zip unzip patch openjdk-17-jdk python3-pip python3-venv \
+  autoconf automake libtool libtool-bin libltdl-dev gettext m4 \
+  pkg-config cmake zlib1g-dev libncurses-dev libffi-dev libssl-dev \
+  build-essential ccache
+sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo6 || true
+
+if ! grep -rqs "AC_DEFUN(\[LT_SYS_SYMBOL_USCORE\]" /usr/share/aclocal/; then
+  echo "!! LT_SYS_SYMBOL_USCORE not found — install libltdl-dev before continuing" >&2
+  exit 1
+fi
 
 # --- python toolchain in an isolated venv ------------------------------
 # A venv keeps buildozer/cython off the system python, which is what kept

@@ -7,11 +7,15 @@ on:
 
 jobs:
   build:
-    # ubuntu-22.04 begins deprecation on 2026-09-17 and GitHub runs brownouts
-    # ahead of that, during which jobs on that label fail to get a runner
-    # ("not acquired by Runner of type hosted"). ubuntu-latest has the largest
-    # pool and is where this needs to end up anyway.
-    runs-on: ubuntu-latest
+    # Back on 22.04: it's the platform buildozer is actually tested against
+    # upstream. (Reverting the ubuntu-latest change, which was made while
+    # chasing what turned out to be a GitHub Actions outage, not a real
+    # incompatibility.)
+    #
+    # Heads-up: 22.04 begins deprecation on 2026-09-17. The build is not
+    # 24.04-blocked — the libffi failure was a missing libltdl-dev, fixed
+    # below — so moving to 24.04 later should just work.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -39,18 +43,32 @@ jobs:
           sudo ln -sf "$PYBIN" /usr/local/bin/python3
           python --version
 
-      # Package names differ slightly across 22.04/24.04/26.04, so install the
-      # portable set first and treat the version-specific ones as optional.
-      # p4a builds libffi (and others) from source via autogen.sh, which needs
-      # the full autotools set — automake/libtoolize/gettext are missing from
-      # buildozer's documented list and their absence fails deep in the build.
+      # p4a's libffi recipe runs autogen.sh, and its own docstring spells out
+      # what that needs:
+      #   automake     -> aclocal
+      #   autoconf     -> autoreconf
+      #   libltdl-dev  -> defines the LT_SYS_SYMBOL_USCORE macro
+      # Missing libltdl-dev is what produced
+      #   "configure.ac:215: error: possibly undefined macro: LT_SYS_SYMBOL_USCORE"
+      # thousands of lines deep in the build.
       - name: Install native build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git zip unzip patch pkg-config cmake \
-            autoconf automake libtool libtool-bin gettext m4 \
+            autoconf automake libtool libtool-bin libltdl-dev gettext m4 \
             zlib1g-dev libncurses-dev libffi-dev libssl-dev build-essential ccache
-          sudo apt-get install -y libtinfo6 || true
+          sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo6 || true
+
+      # Fail fast and loudly if the macro still isn't reachable, rather than
+      # discovering it 20 minutes into a build.
+      - name: Verify libffi's autotools macro is available
+        run: |
+          if grep -rqs "AC_DEFUN(\[LT_SYS_SYMBOL_USCORE\]" /usr/share/aclocal/; then
+            echo "OK: LT_SYS_SYMBOL_USCORE found in $(grep -rls 'AC_DEFUN(\[LT_SYS_SYMBOL_USCORE\]' /usr/share/aclocal/)"
+          else
+            echo "MISSING: LT_SYS_SYMBOL_USCORE not in /usr/share/aclocal — libffi will fail"
+            exit 1
+          fi
 
       - name: Install buildozer & cython
         run: |

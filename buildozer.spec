@@ -20,7 +20,10 @@ android.api = 33
 android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
-android.archs = arm64-v8a,armeabi-v7a
+# arm64 only: every Android phone since ~2017 is arm64-v8a, and building the
+# second architecture doubles build time for no practical gain. Add
+# armeabi-v7a back if you need to support genuinely old hardware.
+android.archs = arm64-v8a
 
 # Pin python-for-android to a known-good release. Its current master branch
 # hardcodes the on-device Python version at 3.14.2, and p4a's own internal

@@ -41,11 +41,15 @@ jobs:
 
       # Package names differ slightly across 22.04/24.04/26.04, so install the
       # portable set first and treat the version-specific ones as optional.
+      # p4a builds libffi (and others) from source via autogen.sh, which needs
+      # the full autotools set — automake/libtoolize/gettext are missing from
+      # buildozer's documented list and their absence fails deep in the build.
       - name: Install native build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf libtool pkg-config \
-            zlib1g-dev libncurses-dev cmake libffi-dev libssl-dev build-essential
+          sudo apt-get install -y git zip unzip patch pkg-config cmake \
+            autoconf automake libtool libtool-bin gettext m4 \
+            zlib1g-dev libncurses-dev libffi-dev libssl-dev build-essential ccache
           sudo apt-get install -y libtinfo6 || true
 
       - name: Install buildozer & cython
@@ -55,7 +59,46 @@ jobs:
 
       - name: Build APK with Buildozer
         run: |
-          yes | buildozer android debug
+          set -o pipefail
+          yes | buildozer android debug 2>&1 | tee /tmp/buildozer.log
+
+      # Buildozer buries the real failure thousands of lines above its own
+      # "Command failed" banner, so pull it out automatically instead of
+      # making a human scroll the raw log.
+      - name: Show the real error
+        if: failure()
+        run: |
+          echo "=================== p4a version actually used ==================="
+          P4A=.buildozer/android/platform/python-for-android
+          if [ -d "$P4A" ]; then
+            git -C "$P4A" describe --tags --always 2>/dev/null || true
+            git -C "$P4A" log -1 --format='%H %ci %s' 2>/dev/null || true
+          else
+            echo "(p4a not cloned)"
+          fi
+
+          echo ""
+          echo "=================== first real errors ==================="
+          grep -nEi "error:|ImportError|ModuleNotFoundError|SyntaxError|Traceback|No such file|not found|failed with exit|fatal error" \
+            /tmp/buildozer.log | grep -viE "warn|deprecat|-Werror|error_|stderr" | head -40 || true
+
+          echo ""
+          echo "=================== 120 lines before the failure ==================="
+          LINE=$(grep -n "Command failed" /tmp/buildozer.log | head -1 | cut -d: -f1)
+          if [ -n "$LINE" ]; then
+            START=$(( LINE > 120 ? LINE - 120 : 1 ))
+            sed -n "${START},${LINE}p" /tmp/buildozer.log
+          else
+            tail -120 /tmp/buildozer.log
+          fi
+
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-log
+          path: /tmp/buildozer.log
+          if-no-files-found: ignore
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

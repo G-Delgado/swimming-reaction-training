@@ -75,10 +75,14 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
+      # NOTE: no `set -o pipefail` here. `yes` is killed by SIGPIPE the moment
+      # buildozer stops reading stdin, which is normal and harmless, but with
+      # pipefail it marks the whole pipeline — and therefore a perfectly good
+      # build — as failed. Take buildozer's own exit status instead.
       - name: Build APK with Buildozer
         run: |
-          set -o pipefail
           yes | buildozer android debug 2>&1 | tee /tmp/buildozer.log
+          exit "${PIPESTATUS[1]}"
 
       # Buildozer buries the real failure thousands of lines above its own
       # "Command failed" banner, so pull it out automatically instead of
@@ -118,8 +122,11 @@ jobs:
           path: /tmp/buildozer.log
           if-no-files-found: ignore
 
+      # always(): if an APK exists, hand it over even when a later step trips.
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: swim-start-trainer-apk
           path: bin/*.apk
+          if-no-files-found: warn

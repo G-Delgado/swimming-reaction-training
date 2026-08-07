@@ -544,6 +544,9 @@
       b.setAttribute("aria-selected", String(b.dataset.mode === mode));
     });
     el.modeHint.textContent = MODE_HINT[mode];
+    // lets the stylesheet reclaim vertical space for the video
+    document.body.classList.toggle("mode-camera", mode === MODE.CAMERA);
+    document.body.classList.toggle("mode-manual", mode === MODE.MANUAL);
     refreshChips();
     reset(true);
   }
